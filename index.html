@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini Chat</title>
+<style>
+body, html { margin:0; padding:0; height:100%; font-family:Arial,sans-serif; background:url('https://images.pexels.com/photos/695644/pexels-photo-695644.jpeg') no-repeat center center fixed; background-size:cover;}
+.chat-container { display:flex; flex-direction:column; height:100vh;}
+.messages { flex:1; overflow-y:auto; padding:10px; padding-bottom:70px; display:flex; flex-direction:column;}
+.message { max-width:70%; margin:5px 0; padding:10px; border-radius:10px; word-wrap:break-word;}
+.me {background:#dcf8c6; align-self:flex-end;}
+.other {background:#fff; align-self:flex-start;}
+.message img { max-width:200px; border-radius:8px; margin-top:5px;}
+.input-area { display:flex; padding:5px; background:#fff; align-items:center; gap:5px; box-sizing:border-box; position: fixed; bottom: 0; left:0; width:100%; z-index:100;}
+.input-area input[type=text] { flex:1; padding:10px; border:1px solid #ccc; border-radius:20px;}
+.input-area button { padding:10px 15px; border:none; border-radius:20px; background:#128c7e; color:#fff; cursor:pointer;}
+.gif-options { position:absolute; bottom:60px; right:5px; background:#fff; border-radius:10px; padding:5px; display:none; flex-direction:column; gap:5px; z-index:1000;}
+.gif-options button { padding:8px 12px; border:none; border-radius:8px; background:#128c7e; color:#fff; cursor:pointer;}
+.gif-modal, .user-modal, .commands-modal { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; z-index:999;}
+.gif-modal-content, .user-modal-content, .commands-modal-content { background:#fff; width:90%; max-width:400px; max-height:80%; overflow:auto; border-radius:10px; padding:15px; text-align:center;}
+.gif-grid, .user-list { display:flex; flex-wrap:wrap; gap:10px; justify-content:center;}
+.gif-grid img, .user-list button { width:80px; height:80px; cursor:pointer; border-radius:8px; object-fit:cover;}
+.user-list button { width:auto; padding:5px 10px; background:#128c7e; color:#fff; border:none; border-radius:8px;}
+#usernameModal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 1); display: flex; align-items: center; justify-content: center; z-index: 10000;}
+#usernameModal .gif-modal-content { max-width:300px;}
+#settingsModal { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; z-index:10001;}
+#settingsModal .gif-modal-content { max-width:300px;}
+#regStatus { position:fixed; top:5px; right:5px; background:#ff0000; padding:5px 10px; border-radius:5px; color:#fff; display:none; z-index:20000;}
+#chatClosedStatus { position:fixed; top:40px; right:5px; background:#ff0000; padding:5px 10px; border-radius:5px; color:#fff; display:none; z-index:20000;}
+.sender-name { display:block; font-size:12px; font-weight:600; color:#555; margin-bottom:4px; font-family:Arial, sans-serif;}
+</style>
+</head>
+<body>
+
+<div id="usernameModal">
+  <div class="gif-modal-content">
+    <h4>Kullanıcı Girişi</h4>
+    <input type="text" id="usernameInput" placeholder="Kullanıcı Adı..."><br>
+    <input type="password" id="passwordInput" placeholder="Şifre oluştur / gir"><br>
+    <button id="saveUsername">Kaydet ve Başla</button>
+  </div>
+</div>
+
+<div class="chat-container" id="chatContainer">
+  <div class="messages" id="messages"></div>
+  <div class="input-area">
+    <input type="text" id="msgInput" placeholder="Mesaj yaz..." />
+    <button id="sendBtn">Gönder</button>
+    <button id="gifBtn">GIF</button>
+  </div>
+</div>
+
+<div class="gif-options" id="gifOptions">
+  <button id="funGifBtn">Eğlenceli GIF</button>
+  <button id="specialBtn" style="display:none;">Özel GIF</button>
+</div>
+
+<div class="gif-modal" id="gifModal">
+  <div class="gif-modal-content">
+    <h4>GIF Seç</h4>
+    <div class="gif-grid" id="gifGrid"></div>
+    <button id="gifCloseBtn">Kapat</button>
+  </div>
+</div>
+
+<div class="user-modal" id="userModal">
+  <div class="user-modal-content">
+    <h4 id="userModalTitle"></h4>
+    <div class="user-list" id="userList"></div>
+    <button id="userModalClose">Kapat</button>
+  </div>
+</div>
+
+<div class="commands-modal" id="commandsModal">
+  <div class="commands-modal-content">
+    <h4>Komutlar</h4>
+    <div id="commandsList"></div>
+    <button id="commandsClose">Kapat</button>
+  </div>
+</div>
+
+<div id="regStatus">Kayıt Kapalı</div>
+<div id="chatClosedStatus">Sohbet Kapalı</div>
+
+<script type="module">
+// Sayfa yüklendiğinde cihaz kontrolü ve PC yönlendirmesi
+function checkDeviceAccess(){
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  if(!isMobile && username !== "SusquN"){
+    // Bilgisayar kullanıcıları yönlendirilir
+    window.location.href = "pc.html";
+  }
+}
+document.addEventListener("DOMContentLoaded", checkDeviceAccess);
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+import { getDatabase, ref, push, onChildAdded, onValue, get, set, child, remove } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
+
+const firebaseConfig = {apiKey:"AIzaSyDD31ehf0YZ4VnlL6RtBvzdTVtMvfKDSS4",authDomain:"anonimchat-df783.firebaseapp.com",databaseURL:"https://anonimchat-df783-default-rtdb.firebaseio.com",projectId:"anonimchat-df783",storageBucket:"anonimchat-df783.firebasestorage.app",messagingSenderId:"70875019789",appId:"1:70875019789:web:0fe20232b7e544b3663344",measurementId:"G-0RF80T3D9Q"};
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const messagesRef = ref(db,"messages");
+const usersRef = ref(db,"users");
+const blockedRef = ref(db,"blocked");
+const commandsRef = ref(db,"commands");
+const localResetRef = ref(db,"localResetRequests");
+
+const messagesDiv = document.getElementById("messages");
+const msgInput = document.getElementById("msgInput");
+const sendBtn = document.getElementById("sendBtn");
+const gifBtn = document.getElementById("gifBtn");
+const gifOptions = document.getElementById("gifOptions");
+const funGifBtn = document.getElementById("funGifBtn");
+const specialBtn = document.getElementById("specialBtn");
+const gifModal = document.getElementById("gifModal");
+const gifGrid = document.getElementById("gifGrid");
+const gifCloseBtn = document.getElementById("gifCloseBtn");
+const usernameModal = document.getElementById("usernameModal");
+const usernameInput = document.getElementById("usernameInput");
+const passwordInput = document.getElementById("passwordInput");
+const saveUsernameBtn = document.getElementById("saveUsername");
+const userModal = document.getElementById("userModal");
+const userModalTitle = document.getElementById("userModalTitle");
+const userList = document.getElementById("userList");
+const userModalClose = document.getElementById("userModalClose");
+const regStatus = document.getElementById("regStatus");
+const chatClosedStatus = document.getElementById("chatClosedStatus");
+const commandsModal = document.getElementById("commandsModal");
+const commandsList = document.getElementById("commandsList");
+const commandsClose = document.getElementById("commandsClose");
+
+let username = localStorage.getItem("chatUsername") || "";
+let password = localStorage.getItem("chatPassword") || "";
+let blockedUsers = [];
+let gifActive = false;
+let chatClosed = false;
+let registrationOpen = true;
+
+async function checkLogin(){
+  if(username){
+    const resetSnap = await get(child(localResetRef, username));
+    if(resetSnap.exists()){ localStorage.removeItem("chatUsername"); localStorage.removeItem("chatPassword"); usernameModal.style.display="flex"; return; }
+    const snap = await get(child(usersRef, username));
+    if(snap.exists() && snap.val().password===password){
+      const blockSnap = await get(child(blockedRef,username));
+      usernameModal.style.display="none"; 
+      if(blockSnap.exists()){ showBlockedNotice(); return; }
+      return;
+    } else { localStorage.removeItem("chatUsername"); localStorage.removeItem("chatPassword"); username=""; password=""; usernameModal.style.display="flex"; }
+  } else { usernameModal.style.display="flex"; }
+}
+checkLogin();
+
+saveUsernameBtn.addEventListener("click", async ()=>{
+  if(!registrationOpen && usernameInput.value.trim()!=="SusquN"){ alert("❌ Kayıt kapalı!"); return; }
+  const userVal = usernameInput.value.trim();
+  const passVal = passwordInput.value.trim();
+  if(!userVal || !passVal) return alert("Lütfen kullanıcı adı ve şifre girin!");
+  const userSnap = await get(child(usersRef,userVal));
+  if(userSnap.exists()){
+    if(userSnap.val().password===passVal){
+      username=userVal; password=passVal;
+      localStorage.setItem("chatUsername",username);
+      localStorage.setItem("chatPassword",password);
+      const blockSnap = await get(child(blockedRef,username));
+      usernameModal.style.display="none";
+      if(blockSnap.exists()){ showBlockedNotice(); }
+    } else alert("❌ Şifre yanlış!");
+  } else {
+    await set(child(usersRef,userVal),{password:passVal,createdAt:Date.now()});
+    username=userVal; password=passVal;
+    localStorage.setItem("chatUsername",username);
+    localStorage.setItem("chatPassword",password);
+    usernameModal.style.display="none";
+    alert("✅ Hesap oluşturuldu!");
+  }
+});
+
+function showBlockedNotice(){
+  messagesDiv.innerHTML="";
+  const div=document.createElement("div");
+  div.classList.add("message","other");
+  div.innerText="⚠️ Mesaj yazma ve mesaj görme yetkiniz Admin SusquN tarafından Engellenmiştir.";
+  messagesDiv.appendChild(div);
+}
+
+async function getBlocked(){
+  const snap = await get(blockedRef);
+  blockedUsers = snap.exists()?Object.keys(snap.val()):[];
+}
+getBlocked();
+
+onValue(commandsRef, snap=>{
+  const cmd = snap.val();
+  if(!cmd) return;
+  switch(cmd.type){
+    case "sil": messagesDiv.innerHTML=""; break;
+    case "gifOn": gifActive=true; specialBtn.style.display="block"; break;
+    case "gifOff": gifActive=false; specialBtn.style.display="none"; break;
+    case "kapat": chatClosed=true; chatClosedStatus.style.display="block"; break;
+    case "ac": chatClosed=false; chatClosedStatus.style.display="none"; break;
+    case "kayıtvar": registrationOpen=true; regStatus.style.display="none"; break;
+    case "kayıtyok": registrationOpen=false; regStatus.style.display="block"; break;
+  }
+});
+
+async function sendText(e){
+  if(e) e.preventDefault();
+  if(chatClosed && username!=="SusquN"){
+    const div=document.createElement("div");
+    div.classList.add("message","other");
+    div.innerText="⚠️ Admin SusquN sohbeti kapattı. Mesaj gönderemezsiniz.";
+    messagesDiv.appendChild(div);
+    messagesDiv.scrollTop=messagesDiv.scrollHeight;
+    msgInput.value="";
+    return;
+  }
+  let text = msgInput.value.trim(); if(!text) return;
+  if(username==="SusquN"){
+    if(text==="/gif+"){ await set(commandsRef,{type:"gifOn",timestamp:Date.now()}); msgInput.value=""; return; }
+    if(text==="/gif-"){ await set(commandsRef,{type:"gifOff",timestamp:Date.now()}); msgInput.value=""; return; }
+    if(text==="/sil"){ await set(commandsRef,{type:"sil",timestamp:Date.now()}); await remove(messagesRef); msgInput.value=""; return; }
+    if(text==="/kapat"){ await set(commandsRef,{type:"kapat",timestamp:Date.now()}); msgInput.value=""; return; }
+    if(text==="/aç"){ await set(commandsRef,{type:"ac",timestamp:Date.now()}); msgInput.value=""; return; }
+    if(text==="/kayıtvar"){ await set(commandsRef,{type:"kayıtvar",timestamp:Date.now()}); msgInput.value=""; return; }
+    if(text==="/kayıtyok"){ await set(commandsRef,{type:"kayıtyok",timestamp:Date.now()}); msgInput.value=""; return; }
+    if(text==="/engel" || text==="/kaldır"){
+      userList.innerHTML="";
+      if(text==="/engel"){ userModalTitle.innerText="Engellenecek Kullanıcılar"; const snap=await get(usersRef); snap.forEach(ch=>{
+        const u=ch.key; if(u==="SusquN" || blockedUsers.includes(u)) return;
+        const btn=document.createElement("button"); btn.innerText=u;
+        btn.onclick=async ()=>{ await set(child(blockedRef,u),true); getBlocked(); userModal.style.display="none";};
+        userList.appendChild(btn);
+      }); }
+      if(text==="/kaldır"){ userModalTitle.innerText="Engeli Kaldırılacak Kullanıcılar"; const snap=await get(blockedRef);
+        if(snap.exists()){ Object.keys(snap.val()).forEach(u=>{ const btn=document.createElement("button"); btn.innerText=u;
+        btn.onclick=async ()=>{ await remove(child(blockedRef,u)); getBlocked(); userModal.style.display="none"; }; userList.appendChild(btn);}); }
+      }
+      userModal.style.display="flex"; msgInput.value=""; return;
+    }
+    if(text==="/silsil"){ localStorage.removeItem("chatUsername"); localStorage.removeItem("chatPassword"); alert("✅ Local kayıtınız silindi!"); location.reload(); return; }
+    if(text.endsWith("sil") && text!="/silsil"){
+      const targetUser = text.replace("/","").replace("sil",""); await set(child(localResetRef,targetUser),true); alert("✅ "+targetUser+" local kaydı sıfırlandı!"); msgInput.value=""; return;
+    }
+    if(text==="/komut"){ commandsList.innerHTML=""; const cmds = ["/gif+","/gif-","/sil","/engel","/kaldır","/kapat","/aç","/kayıtvar","/kayıtyok","/silsil","/kullaniciadi/sil"]; cmds.forEach(c=>{ const p=document.createElement("p"); p.innerText=c; commandsList.appendChild(p);}); commandsModal.style.display="flex"; msgInput.value=""; return;}
+  }
+  const blockSnap = await get(child(blockedRef,username)); if(blockSnap.exists()){ showBlockedNotice(); return; }
+  await push(messagesRef,{user:username,text,createdAt:Date.now()}); msgInput.value="";
+}
+
+sendBtn.addEventListener("click",sendText);
+msgInput.addEventListener("keydown",e=>{if(e.key==="Enter") sendText(e);});
+
+const funGifs = [
+  "https://media.giphy.com/media/l0Exk8EUzSLsrErEQ/giphy.gif",
+  "https://media.giphy.com/media/xT9IgG50Fb7Mi0prBC/giphy.gif",
+  "https://media.giphy.com/media/l0HlNQ03J5JxX6lva/giphy.gif",
+  "https://media.giphy.com/media/l1J9EdzfOSgfyueLm/giphy.gif",
+  "https://media.giphy.com/media/xT0GqssRweIhlz209i/giphy.gif", // Alkış
+  "https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif", // Yüzü kızarmak
+  "https://media.giphy.com/media/3oriO0OEd9QIDdllqo/giphy.gif", // Ağlamak
+  "https://media.giphy.com/media/l3q2K5jinAlChoCLS/giphy.gif", // Kafayı yemek
+  "https://media.giphy.com/media/3o6ZtaO9BZHcOjmErm/giphy.gif", // Dans etmek
+  "https://media.giphy.com/media/l41lFw057lAJQMwg0/giphy.gif", // El sallamak
+  "https://media.giphy.com/media/3o6Zt8MgUuvSbkZYWc/giphy.gif", // Koşmak
+  "https://media.giphy.com/media/xT9IgzoKnwFNmISR8I/giphy.gif", // Yüzünü kapamak
+  "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif", // Mutlu
+  "https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExamxheWVsNGsyMTNrYncxcTYwdW9jYXhhYmhiaXRwY3Z5OWp5azVtaSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/ehJkGIbzZweZ1xLIv4/giphy.gif",
+  "https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExdjFxZGlxMnlvOGx5ZTgwejh0c25zcnVicTlsem9kdmo3aGNoaTg4OSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/R2km9sVVEOWZdc2PEH/giphy.gif",
+  "https://media.giphy.com/media/v1.Y2lkPWVjZjA1ZTQ3bHVhYmtyaGo0Mzg0azB2NjNsbTNodTZ3NGh6ZmY0M3BhcXg2NjlhNSZlcD12MV9naWZzX3JlbGF0ZWQmY3Q9Zw/l1J9u3TZfpmeDLkD6/giphy.gif",
+  "https://media.giphy.com/media/v1.Y2lkPWVjZjA1ZTQ3bHVhYmtyaGo0Mzg0azB2NjNsbTNodTZ3NGh6ZmY0M3BhcXg2NjlhNSZlcD12MV9naWZzX3JlbGF0ZWQmY3Q9Zw/LUtqjywLl8wBicW81X/giphy.gif",
+  "https://media.giphy.com/media/v1.Y2lkPWVjZjA1ZTQ3MDZjdWR2OG5wMm82ODV2amF6OXI0Y2tiYjF0bnY3bHZrd3l6Nnp0eiZlcD12MV9naWZzX3JlbGF0ZWQmY3Q9Zw/UtmuWVkzTm7OiWyIC2/giphy.gif",
+  "https://media.giphy.com/media/v1.Y2lkPWVjZjA1ZTQ3a2hxbWlhc3FyanR6NDg1Y3hiN29sb3c0NHVjcmpkNjFsMWRsMDZwciZlcD12MV9naWZzX3NlYXJjaCZjdD1n/qFi3fACSMnP4Q/giphy.gif",
+  "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExcTUwaDM1bzIxMjBveDF3OXJqdXFkaDhqbXd1MjRqODZkbmJmYm10ciZlcD12MV9naWZzX3NlYXJjaCZjdD1n/aQYR1p8saOQla/giphy.gif",
+  "https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExN3gyMHh6cTNsMzA0bW11NXJ1OWZydXhiNXBvMm9uZXY2ZWp6c2lrciZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3o7qE2VAxuXWeyvJIY/giphy.gif",
+  "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Zwb2Y5enN5djNhNjZ1bGI5dDZucDNxOGxyNXBwdmcxdDEybXVnZiZlcD12MV9naWZzX3NlYXJjaCZjdD1n/t3sZxY5zS5B0z5zMIz/giphy.gif",
+  "https://media.giphy.com/media/cj4S7FKnZp1mZW9a0a/giphy.gif"
+
+];
+
+const specialGifs = [
+  "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExZWd3b3FwN2Y3ZjFrMGFyOHFkczQxb2hzMnpzbzFqbzRzbW95cW15dyZlcD12MV9naWZzX3NlYXJjaCZjdD1n/veAy5UOhBdS3C/giphy.gif",
+  "https://media.giphy.com/media/v1.Y2lkPWVjZjA1ZTQ3cmJyaXl4ZmFzYmI0YXhtbjBuYjBpYWhjcG95dDN1cmFrMXF1Y2V4byZlcD12MV9naWZzX3NlYXJjaCZjdD1n/tB0P33Am1oZck/giphy.gif",
+  "https://media.giphy.com/media/v1.Y2lkPWVjZjA1ZTQ3cmJyaXl4ZmFzYmI0YXhtbjBuYjBpYWhjcG95dDN1cmFrMXF1Y2V4byZlcD12MV9naWZzX3NlYXJjaCZjdD1n/of7ly2wRNo6Kk/giphy.gif",
+  "https://media.giphy.com/media/v1.Y2lkPWVjZjA1ZTQ3a2VwZTdlNWZtMnU3ajk2OHhtbHo2OXgyaG1wb3A2cW14eWxoZjN3eCZlcD12MV9naWZzX3NlYXJjaCZjdD1n/ZqihO0jGDKc8SJYmRB/giphy.gif",
+  "https://media.giphy.com/media/v1.Y2lkPWVjZjA1ZTQ3bm1hZjdwYTFraDNpYzEwZXVva3owYjlkYmpnMmlnbzl2OWFodGwxeCZlcD12MV9naWZzX3NlYXJjaCZjdD1n/vVzfZLROJZ2LK/giphy.gif",
+  "https://media.giphy.com/media/v1.Y2lkPWVjZjA1ZTQ3azd2ZzFhM2E4cHF2d2Q5MXhmZmwzMWZtY3hqNmEyMDRhcmF0YXFiMCZlcD12MV9naWZzX3NlYXJjaCZjdD1n/C23q4oydK7Xva/giphy.gif",
+  "https://www.escort46.it/user_images/1531047332_169009.jpg",
+  "https://porngipfy.com/wp-content/uploads/2018/12/vanessa-decker_001-9.gif",
+  "https://i0.wp.com/cumception.com/wp-content/upload/2019/11/nude_naughty_co-9676.gif?ssl=1",
+  "https://cdn5-images.motherlessmedia.com/images/A686451.gif?fit=401%2C475&ssl=1",
+  "https://i0.wp.com/otvet.imgsmail.ru/download/u_aa7c827672115ed7a27edbf08ce22acc_800.gif?resize=608%2C608&ssl=1",
+  "https://i0.wp.com/porngifmag.com/content/2015/10/porn-gif-magazine-masturbacoes_009.gif?ssl=1",
+  "https://i.hizliresim.com/qbPpMZ.gif",
+  "https://64.media.tumblr.com/e6afdc3657e270bb3586e7b168ae5a58/tumblr_n02y52LG1q1tpvlfto1_250.gif",
+  "https://test.backbook.me/file/2017/11/23/34/full_f490497325.gif",
+  "https://64.media.tumblr.com/0824298cc64b4d3b51a1df091d0da404/tumblr_ntcyrrI0Dh1tfymkwo10_500.gif",
+  "https://s2.pictoa.com/media/galleries/258/512/258512601c3b214a6fc/3895067601c3b30408c9.gif",
+  "https://steemitimages.com/p/2r8F9rJF8BjUhkRM5SrukdzuMRYTDTY8qH8x3SWWHLoAqgDvV2oxVs7Hy9GmmNzGuExBb7SnQAhtWwZxysTqh2XwBujMa1zJLXPazFwUXuKjmXZjEk7oFheEVvkaTyNKX?format=match&mode=fit",
+  "https://steemitimages.com/p/99pyU5Ga1kwkfZ17QX2HV6pndHEsSP86qLakgbyjK3SATqp8nKGVDWX7rP1FJK4UxZDadEH9QXDduh5jPmL9uLtdv7iSjJngug9H6n2LrQMjA63Lqb7e6hfhsjZ4jXZt6y?format=match&mode=fit",
+  "https://cdn.sex.com/images/pinporn/2019/05/15/21149355.gif?width=300",
+  "https://cdn.sexxxgif.com/146909/driving-him-mad-scaled.webp",
+  "https://i2.wp.com/33.media.tumblr.com/70a0618f69f29c007b20334aeb59e277/tumblr_nanuaySDWS1t3ng9ao1_500.gif",
+  "https://i0.wp.com/img0.liveinternet.ru/images/attach/c/9/106/554/106554088_4583017_tumblr_miwwikUbqA1rfa2ogo1_500.gif?ssl=1",
+  "https://i.hizliresim.com/9dOE1o.gif",
+  "https://steemitimages.com/p/99pyU5Ga1kwkmgdExsEkP6mdPizGKkJ2scxN9RU5iYoqa8ofvzfwgv2RUEEnBTADPgtQCuNmiQMHHBrYve2YSdsLLKQpH1WDzjAL5RRW6KVCUndaxgLMopfJ4NkcP1TJ5B?format=match&mode=fit",
+  "https://porngifmag.com/content/2016/07/porn-gif-magazine-fuegodevenus_001-2.gif",
+  "https://i.postimg.cc/cCg4MHMR/0-1299a2-8907a338-orig-1.gif",
+  "https://porngifs.ca/wp-content/uploads/2020/08/gif-taken-from-behind_5f424812d1c2a.gif",
+  "https://64.media.tumblr.com/69c83f48a59e0c2ff159d72f6540f8ca/tumblr_nsrv73wGe31uw4r6eo8_500.gif",
+  "https://youporn-watch.com/wp-content/uploads/2020/06/gif-the-best-of-teen-porn-gifs-020_5ed801ed6648c.gif",
+  "http://porngifmag.com/content/2018/12/blowjob_005-13.gif",
+  "https://cdn.sex.com/images/pinporn/2015/02/06/10367600.gif",
+  "https://cdn.hardcoregify.com/29367/her-study-partner-scaled.webp",
+  "https://porngipfy.com/wp-content/uploads/2018/12/21naturals-purity_001.gif",
+  "https://myteenwebcam.com/fapp/gifs/a3d5698d09634a399f22637eec9d66db.gif",
+  "https://i0.wp.com/i2.imageban.ru/out/2015/01/10/dc2d1e69fe56a4e81bcdab83f350c4db.gif?resize=728,728&ssl=1",
+  "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEi98RpnsIVTArULl0a4eA41S1vD3ZXGVPoWU1vST6AGg_W-0wV8_mSSIhJOzaFMXipzdNJhx4XeJIsZCnB0JcnFU0UIT24gnzy4kDtZjzOWe2HTU_k4myIcNdZ3d6PhaYukpFXSWnmW6mkk/s1600/6ea15487af2eeed64123512aac91ac56.gif",
+  "https://64.media.tumblr.com/8b23e922be1be0e60250786e58627ef1/tumblr_mk2es2zTHm1r83bj4o8_r1_1280.gif",
+  "https://64.media.tumblr.com/3bd1934b600a59e8a2eff9d5ad640cbc/tumblr_nmc8yjPM5N1u2obo4o8_500.gif",
+  "https://dojki.biz/files/!Porno_animaciya/!Porno_gifki_2/!Porno_gif_7137!.gif",
+  "https://cdn.hardcoregify.com/24826/fuck-her-deep-and-make-her-cum-scaled.webp",
+  "https://porngifs.ca/wp-content/uploads/2020/07/gif-spooning-sex-session-just-got-rough_5f1ff5fc0e928.gif",
+  "https://ds.sasisa.org/foto/foto/a1018205/5f473b4b7cc024.381194681598503755_5f473b4b7cc107.56695578.gif",
+  "https://img42.pixhost.to/images/30/147148813_pk4_630.gif",
+  "https://cdn.hardcoregify.com/39709/jenni-lee.gif",
+  "https://cdn5-images.motherlessmedia.com/images/592C01F.gif",
+  "https://cdn.hardcoregify.com/21981/more-harder-more-more-jaipurescorts.gif",
+  "https://i.hizliresim.com/LvM5Xj.gif",
+  "https://myteenwebcam.com/fapp/gifs/01f9f06adbc5ce17850bb08fd3e03b20.gif",
+  "https://myteenwebcam.com/fapp/gifs/0ef7e5c88f9cb450da625b43a06643e7.gif",
+  "https://myteenwebcam.com/fapp/gifs/5a56fc1afd6d0e386086a6fdbdc113a0.gif",
+  "https://i2.wp.com/33.media.tumblr.com/70a0618f69f29c007b20334aeb59e277/tumblr_nanuaySDWS1t3ng9ao1_500.gif",
+  "https://i0.wp.com/cdn.humoraf.ru/wp-content/uploads/2018/09/potseluj-gif-humoraf.ru-29.gif?ssl=1",
+];
+gifBtn.addEventListener("click", ()=>{ gifOptions.style.display = gifOptions.style.display === "flex" ? "none" : "flex"; });
+
+function closeAllGifUI(){ gifModal.style.display="none"; gifOptions.style.display="none"; }
+
+funGifBtn.addEventListener("click", ()=>{
+  gifGrid.innerHTML="";
+  funGifs.forEach(url=>{
+    const img=document.createElement("img");
+    img.src=url;
+    img.onclick=async ()=>{
+  if(chatClosed && username!=="SusquN"){
+    const div=document.createElement("div");
+    div.classList.add("message","other");
+    div.innerText="⚠️ Admin SusquN sohbeti kapattı. GIF gönderemezsiniz.";
+    messagesDiv.appendChild(div);
+    messagesDiv.scrollTop=messagesDiv.scrollHeight;
+    closeAllGifUI();
+    return;
+  }
+  const blockSnap = await get(child(blockedRef,username));
+  if(blockSnap.exists()){ showBlockedNotice(); closeAllGifUI(); return; }
+  await push(messagesRef,{user:username,gifURL:url,createdAt:Date.now()});
+  closeAllGifUI();
+};
+
+    gifGrid.appendChild(img);
+  });
+  gifModal.style.display="flex";
+});
+specialBtn.addEventListener("click", ()=>{
+  gifGrid.innerHTML="";
+  specialGifs.forEach(url=>{
+    const img=document.createElement("img");
+    img.src=url;
+  img.onclick=async ()=>{
+  if(chatClosed && username!=="SusquN"){
+    const div=document.createElement("div");
+    div.classList.add("message","other");
+    div.innerText="⚠️ Admin SusquN sohbeti kapattı. GIF gönderemezsiniz.";
+    messagesDiv.appendChild(div);
+    messagesDiv.scrollTop=messagesDiv.scrollHeight;
+    closeAllGifUI();
+    return;
+  }
+  const blockSnap = await get(child(blockedRef,username));
+  if(blockSnap.exists()){ showBlockedNotice(); closeAllGifUI(); return; }
+  await push(messagesRef,{user:username,gifURL:url,createdAt:Date.now()});
+  closeAllGifUI();
+};
+
+    gifGrid.appendChild(img);
+  });
+  gifModal.style.display="flex";
+});
+gifCloseBtn.addEventListener("click", closeAllGifUI);
+userModalClose.addEventListener("click", ()=>{ userModal.style.display="none"; });
+commandsClose.addEventListener("click", ()=>{ commandsModal.style.display="none"; });
+
+onChildAdded(messagesRef, data => {
+  const msg = data.val();
+  if(!msg.user || (!msg.text && !msg.gifURL)) return;
+  if(blockedUsers.includes(username)) return;
+  const div=document.createElement("div");
+  div.classList.add("message");
+  div.classList.add(msg.user===username?"me":"other");
+
+  if(msg.gifURL){
+    // GIF mesajları için isim üstte
+    const nameEl=document.createElement("span"); 
+    nameEl.className="sender-name"; 
+    nameEl.textContent=msg.user; 
+    div.appendChild(nameEl);
+    const img=document.createElement("img"); 
+    img.src=msg.gifURL; 
+    img.alt="GIF"; 
+    div.appendChild(img);
+  }else{
+    // Normal mesajlar eski formatta
+    div.innerHTML=`<b>${msg.user}:</b> ${msg.text}`;
+  }
+
+  messagesDiv.appendChild(div);
+  messagesDiv.scrollTop=messagesDiv.scrollHeight;
+});
+
+</script>
+</body>
+</html>
