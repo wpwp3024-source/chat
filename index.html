@@ -153,10 +153,16 @@ async function checkLogin(){
 checkLogin();
 
 saveUsernameBtn.addEventListener("click", async ()=>{
-  if(!registrationOpen && usernameInput.value.trim()!=="SusquN"){ alert("❌ Kayıt kapalı!"); return; }
   const userVal = usernameInput.value.trim();
   const passVal = passwordInput.value.trim();
+
+  if(!registrationOpen && userVal !== "SusquN"){ 
+    alert("❌ Kayıt kapalı! Yeni kullanıcı oluşturamazsınız."); 
+    return; 
+  }
+
   if(!userVal || !passVal) return alert("Lütfen kullanıcı adı ve şifre girin!");
+  
   const userSnap = await get(child(usersRef,userVal));
   if(userSnap.exists()){
     if(userSnap.val().password===passVal){
@@ -176,6 +182,7 @@ saveUsernameBtn.addEventListener("click", async ()=>{
     alert("✅ Hesap oluşturuldu!");
   }
 });
+
 
 function showBlockedNotice(){
   messagesDiv.innerHTML="";
