@@ -217,6 +217,16 @@ async function sendText(e){
     return;
   }
   let text = msgInput.value.trim(); if(!text) return;
+  // Her kullanıcı kendi local kaydını silmek için
+if(text==="/lsil"){
+    localStorage.removeItem("chatUsername");
+    localStorage.removeItem("chatPassword");
+    alert("✅ Local kaydınız silindi! Lütfen tekrar giriş yapın.");
+    usernameModal.style.display = "flex"; // Giriş ekranını göster
+    msgInput.value = "";
+    return;
+}
+
   if(username==="SusquN"){
    if(text==="/gif+"){ await set(child(commandsRef,"gifActive"),true); msgInput.value=""; return; }
 if(text==="/gif-"){ await set(child(commandsRef,"gifActive"),false); msgInput.value=""; return; }
