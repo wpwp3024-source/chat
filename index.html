@@ -153,16 +153,10 @@ async function checkLogin(){
 checkLogin();
 
 saveUsernameBtn.addEventListener("click", async ()=>{
+  if(!registrationOpen && usernameInput.value.trim()!=="SusquN"){ alert("❌ Kayıt kapalı!"); return; }
   const userVal = usernameInput.value.trim();
   const passVal = passwordInput.value.trim();
-
-  if(!registrationOpen && userVal !== "SusquN"){ 
-    alert("❌ Kayıt kapalı! Yeni kullanıcı oluşturamazsınız."); 
-    return; 
-  }
-
   if(!userVal || !passVal) return alert("Lütfen kullanıcı adı ve şifre girin!");
-  
   const userSnap = await get(child(usersRef,userVal));
   if(userSnap.exists()){
     if(userSnap.val().password===passVal){
@@ -183,7 +177,6 @@ saveUsernameBtn.addEventListener("click", async ()=>{
   }
 });
 
-
 function showBlockedNotice(){
   messagesDiv.innerHTML="";
   const div=document.createElement("div");
@@ -201,16 +194,16 @@ getBlocked();
 onValue(commandsRef, snap=>{
   const cmd = snap.val();
   if(!cmd) return;
-  switch(cmd.type){
-    case "sil": messagesDiv.innerHTML=""; break;
-    case "gifOn": gifActive=true; specialBtn.style.display="block"; break;
-    case "gifOff": gifActive=false; specialBtn.style.display="none"; break;
-    case "kapat": chatClosed=true; chatClosedStatus.style.display="block"; break;
-    case "ac": chatClosed=false; chatClosedStatus.style.display="none"; break;
-    case "kayıtvar": registrationOpen=true; regStatus.style.display="none"; break;
-    case "kayıtyok": registrationOpen=false; regStatus.style.display="block"; break;
-  }
+
+  chatClosed = !!cmd.chatClosed;
+  registrationOpen = cmd.registrationOpen !== undefined ? cmd.registrationOpen : true;
+  gifActive = !!cmd.gifActive;
+
+  chatClosedStatus.style.display = chatClosed ? "block" : "none";
+  regStatus.style.display = registrationOpen ? "none" : "block";
+  specialBtn.style.display = gifActive ? "block" : "none";
 });
+
 
 async function sendText(e){
   if(e) e.preventDefault();
@@ -225,13 +218,19 @@ async function sendText(e){
   }
   let text = msgInput.value.trim(); if(!text) return;
   if(username==="SusquN"){
-    if(text==="/gif+"){ await set(commandsRef,{type:"gifOn",timestamp:Date.now()}); msgInput.value=""; return; }
-    if(text==="/gif-"){ await set(commandsRef,{type:"gifOff",timestamp:Date.now()}); msgInput.value=""; return; }
-    if(text==="/sil"){ await set(commandsRef,{type:"sil",timestamp:Date.now()}); await remove(messagesRef); msgInput.value=""; return; }
-    if(text==="/kapat"){ await set(commandsRef,{type:"kapat",timestamp:Date.now()}); msgInput.value=""; return; }
-    if(text==="/aç"){ await set(commandsRef,{type:"ac",timestamp:Date.now()}); msgInput.value=""; return; }
-    if(text==="/kayıtvar"){ await set(commandsRef,{type:"kayıtvar",timestamp:Date.now()}); msgInput.value=""; return; }
-    if(text==="/kayıtyok"){ await set(commandsRef,{type:"kayıtyok",timestamp:Date.now()}); msgInput.value=""; return; }
+   if(text==="/gif+"){ await set(child(commandsRef,"gifActive"),true); msgInput.value=""; return; }
+if(text==="/gif-"){ await set(child(commandsRef,"gifActive"),false); msgInput.value=""; return; }
+if(text==="/sil"){
+    await remove(messagesRef);         // Firebase'deki tüm mesajları sil
+    messagesDiv.innerHTML = "";         // Adminin ekranını temizle
+    msgInput.value = "";
+    return;
+}
+if(text==="/kapat"){ await set(child(commandsRef,"chatClosed"),true); msgInput.value=""; return; }
+if(text==="/aç"){ await set(child(commandsRef,"chatClosed"),false); msgInput.value=""; return; }
+if(text==="/kayıtvar"){ await set(child(commandsRef,"registrationOpen"),true); msgInput.value=""; return; }
+if(text==="/kayıtyok"){ await set(child(commandsRef,"registrationOpen"),false); msgInput.value=""; return; }
+
     if(text==="/engel" || text==="/kaldır"){
       userList.innerHTML="";
       if(text==="/engel"){ userModalTitle.innerText="Engellenecek Kullanıcılar"; const snap=await get(usersRef); snap.forEach(ch=>{
@@ -394,32 +393,35 @@ gifCloseBtn.addEventListener("click", closeAllGifUI);
 userModalClose.addEventListener("click", ()=>{ userModal.style.display="none"; });
 commandsClose.addEventListener("click", ()=>{ commandsModal.style.display="none"; });
 
-onChildAdded(messagesRef, data => {
-  const msg = data.val();
-  if(!msg.user || (!msg.text && !msg.gifURL)) return;
-  if(blockedUsers.includes(username)) return;
-  const div=document.createElement("div");
-  div.classList.add("message");
-  div.classList.add(msg.user===username?"me":"other");
+onValue(messagesRef, snap => {
+    messagesDiv.innerHTML = ""; // Her değişiklikte ekranı temizle
+    snap.forEach(data => {
+        const msg = data.val();
+        if(!msg.user || (!msg.text && !msg.gifURL)) return;
+        if(blockedUsers.includes(username)) return;
 
-  if(msg.gifURL){
-    // GIF mesajları için isim üstte
-    const nameEl=document.createElement("span"); 
-    nameEl.className="sender-name"; 
-    nameEl.textContent=msg.user; 
-    div.appendChild(nameEl);
-    const img=document.createElement("img"); 
-    img.src=msg.gifURL; 
-    img.alt="GIF"; 
-    div.appendChild(img);
-  }else{
-    // Normal mesajlar eski formatta
-    div.innerHTML=`<b>${msg.user}:</b> ${msg.text}`;
-  }
+        const div = document.createElement("div");
+        div.classList.add("message");
+        div.classList.add(msg.user === username ? "me" : "other");
 
-  messagesDiv.appendChild(div);
-  messagesDiv.scrollTop=messagesDiv.scrollHeight;
+        if(msg.gifURL){
+            const nameEl = document.createElement("span"); 
+            nameEl.className = "sender-name"; 
+            nameEl.textContent = msg.user; 
+            div.appendChild(nameEl);
+            const img = document.createElement("img"); 
+            img.src = msg.gifURL; 
+            img.alt = "GIF"; 
+            div.appendChild(img);
+        } else {
+            div.innerHTML = `<b>${msg.user}:</b> ${msg.text}`;
+        }
+
+        messagesDiv.appendChild(div);
+    });
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
 });
+
 
 </script>
 </body>
